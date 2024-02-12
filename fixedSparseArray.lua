@@ -1,28 +1,26 @@
 local isPosInt = _G.qtype.isPosInt
 local floor, min = math.floor, math.min
-local create, insert, remove = table.create, table.insert, table.remove
+local create, insert = table.create, table.insert
 
-local fixedSparseArray = _G.qclass.extend("fixedSparseArray")
+local fixedSparseArray = _G.qclass.extend("fixedSparseArray", "sparseArray")
 
-fixedSparseArray:setStaticField("_placeholder", {}, true)
+fixedSparseArray:setField("_size", nil, true)
 
-fixedSparseArray:setField("_table", nil, true)
-fixedSparseArray:setField("_holes", nil, true)
-fixedSparseArray:setField("_peakIndex", 0)
-
-fixedSparseArray:setField("size", nil, true)
-
-fixedSparseArray:setProperty(
-    "space",
+fixedSparseArray:overrideProperty(
+    "size",
     function(inst)
-        return inst.size - inst._peakIndex + #inst._holes
+        return inst._size
     end,
-    function(inst)
-        error("cannot set ".._G.qtype.get(inst)..".space")
+    function(inst, v)
+        inst.base.size = v
     end
 )
 
-fixedSparseArray:setMethod("set", function(inst, index, value)
+fixedSparseArray:overrideMethod("_increaseSize", function(inst)
+    error("cannot change size of ".._G.qtype.get(inst))
+end)
+
+fixedSparseArray:overrideMethod("set", function(inst, index, value)
     if index < 1 or index > inst.size or index ~= floor(index) then
         error("bad index expected positive integer within array range")
     end
@@ -37,49 +35,8 @@ fixedSparseArray:setMethod("set", function(inst, index, value)
     tab[index] = value
 end)
 
-fixedSparseArray:setMethod("remove", function(inst, index)
-    if not isPosInt(index) or index < 1 or index > inst.space then
-        error("bad index expected positive integer within array range")
-    end
-    local tab = inst._table
-    local placeholder = inst._placeholder
-    local removed = false
-    if tab[index] ~= placeholder then
-        insert(inst._holes, index)
-        removed = true
-    end
-    tab[index] = placeholder
-    return removed
-end)
-
-fixedSparseArray:setMethod("removeMul", function(inst, indices)
-    if type(indices) ~= "table" then
-        error("bad type to indices expected table")
-    end
-    local indexCount = #indices
-    local space = inst.space
-    if indexCount > space then
-        error("indices is larger than "..tostring(inst))
-    end
-    for _, removalIndex in ipairs(indices) do
-        if not isPosInt(removalIndex) or removalIndex < 1 or removalIndex > space then
-            error("bad index expected positive integer within array range")
-        end
-    end
-    local tab = inst._table
-    local placeholder = inst._placeholder
-    local removed = {}
-    for _, removalIndex in ipairs(indices) do
-        if tab[removalIndex] ~= placeholder then
-            insert(removed, removalIndex)
-        end
-        tab[removalIndex] = placeholder
-    end
-    return removed
-end)
-
-fixedSparseArray:setMethod("insert", function(inst, value)
-    if inst.space < 0 then
+fixedSparseArray:overrideMethod("insert", function(inst, value)
+    if inst.space == 0 then
         error(tostring(inst).." out of space")
     end
     if value == nil then
@@ -101,12 +58,13 @@ fixedSparseArray:setMethod("insert", function(inst, value)
     return index
 end)
 
-fixedSparseArray:setMethod("insertMul", function(inst, values)
+fixedSparseArray:overrideMethod("insertMul", function(inst, values)
     if type(values) ~= "table" then
         error("bad type to values expected table")
     end
     local valueCount = #values
     if valueCount > inst.space then
+        print(valueCount, inst.space, inst.size)
         error(tostring(inst).." out of space")
     end
     local holes = inst._holes
@@ -134,28 +92,11 @@ fixedSparseArray:setMethod("insertMul", function(inst, values)
     return indices
 end)
 
-fixedSparseArray:setMethod("get", function(inst, index)
-    local val = inst._table[index]
-    if val == inst._placeholder then
-        return nil
-    end
-    return val
-end)
-
-fixedSparseArray:setMethod("find", function(inst, value)
-    for index, existingValue in ipairs(inst._table) do
-        if existingValue == value then
-            return index
-        end
-    end
-    return nil
-end)
-
 fixedSparseArray:setConstructor(function(inst, size)
     if not isPosInt(size) then
-        error("bad type to size espected positive integer")
+        error("bad type to size expected positive integer")
     end
-    inst.size = size
+    inst._size = size
     inst._table = create(size, inst._placeholder)
     inst._holes = {}
 end)
